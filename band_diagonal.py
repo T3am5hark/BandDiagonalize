@@ -9,8 +9,7 @@ def metropolis(e1, e2, t):
       t  :  temperature
       
     Always swap if new state is better.  Take disadvantageous swap with probability
-    p = exp(-t*(e2-e1)/tau) (probability decreases exponentially with increasing 
-    iterations - "cooling" in simulated annealing)
+    p = exp(-(e2-e1)/t).  For simulated annealing, t gets smaller with higher iterations.
     """
     if e2 < e1:
         return True
@@ -23,7 +22,8 @@ def metropolis(e1, e2, t):
 
 
 def simulated_annealing(x0, energy_fun, perm_fun, 
-                        steps=10000, t0=1.0, tau=1,
+                        accept_reject_update_fun=None,
+                        steps=10000, t0=1.0, tau=100,
                         report_steps=100,
                         report=False):
     x = x0.copy()
@@ -34,14 +34,16 @@ def simulated_annealing(x0, energy_fun, perm_fun,
         perm_fun(x_cand)
         e1 = energy_fun(x)
         e2 = energy_fun(x_cand)
-        temp = tau/t
-        swap = metropolis(e1, e2, temp)
-        if swap:
+        temp = np.exp(-t/tau)
+        accept = metropolis(e1, e2, temp)
+        if accept:
             x = x_cand
             e[t] = e2
         else:
             e[t] = e1
-        swaps.append(swap)
+        swaps.append(accept)
+        if accept_reject_update_fun is not None:
+            accept_reject_update_fun(accept)
             
         if report and t % report_steps == 0:
             print('[{0}] Energy = {1}, T={2}'.format(t, e[t], temp))
@@ -74,6 +76,7 @@ def random_permute_two(mat):
     i2 = np.random.randint(0, mat.shape[0])
     permute_two(mat, i1, i2)
     return i1, i2
+ 
     
 def random_permutation_matrix(n):
     indices = np.arange(0,n)
@@ -109,21 +112,39 @@ class ReorderPermuter:
     def random_row_column_reorder(self, mat):
         i1, i2 = random_permute_two(mat)
         # swap indices
-        tmp = self.indices[i2]
-        self.indices[i2] = self.indices[i1]
-        self.indices[i1] = tmp
+        self._candidate_indices = (i1,i2)
+        
+    def update_indices(self, accept):
+        if accept:
+            i1 = self._candidate_indices[0]
+            i2 = self._candidate_indices[1]
+            tmp = self.indices[i2]
+            self.indices[i2] = self.indices[i1]
+            self.indices[i1] = tmp
         
     def get_permutation_matrix(self):
         
         permutation_mat = np.zeros(shape=(self.n, self.n))
         for i in np.arange(0, self.n):
             permutation_mat[i, self.indices[i]] = 1.0
+        return permutation_mat
             
-    def reorder_with_permutation(self, mat):
+    def reorder_with_permutation(self, mat=None):
         
-        pmat = get_permutation_matrix()
+        if mat is None:
+            mat = self.original_mat
+        
+        pmat = self.get_permutation_matrix()
         # Row / column reorder with permutation matrix
         return np.matmul(pmat.transpose(), np.matmul(mat, pmat))
+    
+    def reorder_permutation_inverse(self, mat=None):
+        
+        if mat is None:
+            mat = self.original_mat
+            
+        pmat = self.get_permutation_matrix()
+        return np.matmul(pmat, np.matmul(mat, pmat.transpose()))
 
 
 def rbf_cov(n, length_scale=None):
