@@ -34,7 +34,8 @@ def simulated_annealing(x0, energy_fun, perm_fun,
         perm_fun(x_cand)
         e1 = energy_fun(x)
         e2 = energy_fun(x_cand)
-        swap = metropolis(e1, e2, tau/t)
+        temp = tau/t
+        swap = metropolis(e1, e2, temp)
         if swap:
             x = x_cand
             e[t] = e2
@@ -43,7 +44,7 @@ def simulated_annealing(x0, energy_fun, perm_fun,
         swaps.append(swap)
             
         if report and t % report_steps == 0:
-            print('[{0}] Energy = {1}'.format(t, e[t]))
+            print('[{0}] Energy = {1}, T={2}'.format(t, e[t], temp))
         
     return x, e, swaps
 
