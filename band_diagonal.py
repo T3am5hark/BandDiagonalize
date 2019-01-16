@@ -1,4 +1,4 @@
-
+import numpy as np
 
 def metropolis(e1, e2, t):
     """
@@ -72,3 +72,86 @@ def random_permute_two(mat):
     i1 = np.random.randint(0, mat.shape[0])
     i2 = np.random.randint(0, mat.shape[0])
     permute_two(mat, i1, i2)
+    return i1, i2
+    
+def random_permutation_matrix(n):
+    indices = np.arange(0,n)
+    shuffled = np.random.permutation(indices)
+    
+    mat = np.zeros(shape=(n,n))
+    
+    for i in indices:
+        j = shuffled[i]
+        mat[i,j] = 1
+    
+    return shuffled, mat
+
+
+class ReorderPermuter:
+    """
+    This is just a wrapper class for the random row/column swap function that does additional 
+    book-keeping on the index array.  After the algorithm is complete, the index array will have been
+    re-ordered to provide lookup of labels associated with the matrix or to generate the permutation
+    matrix solved for by simulated annealing.
+    """
+    
+    def __init__(self, original_mat, indices=None, n=None):
+        if indices is None:
+            if n is None:
+                raise Exception('Must supply either array of indices or value of n (matrix dimension)')
+            indices = np.arange(0, n)
+            n = indices.shape[0]
+        self.n = n
+        self.indices = indices
+        self.original_mat = original_mat.copy()
+        
+    def random_row_column_reorder(self, mat):
+        i1, i2 = random_permute_two(mat)
+        # swap indices
+        tmp = self.indices[i2]
+        self.indices[i2] = self.indices[i1]
+        self.indices[i1] = tmp
+        
+    def get_permutation_matrix(self):
+        
+        permutation_mat = np.zeros(shape=(self.n, self.n))
+        for i in np.arange(0, self.n):
+            permutation_mat[i, self.indices[i]] = 1.0
+            
+    def reorder_with_permutation(self, mat):
+        
+        pmat = get_permutation_matrix()
+        # Row / column reorder with permutation matrix
+        return np.matmul(pmat.transpose(), np.matmul(mat, pmat))
+
+
+def rbf_cov(n, length_scale=None):
+    """
+    Simple rbf kernel covariance with "distance" uniformly tied to
+    index in the matrix (creates band-diagonal matrix for testing)
+    """
+    if length_scale is None:
+        length_scale = n/4
+    scale = np.power(length_scale, 2)
+    cov = np.zeros(shape=(n, n))
+    for i in np.arange(0, n):
+        for j in np.arange(0, n):
+            d = np.power(i-j, 2) / scale
+            cov[i,j] = np.exp(-d)
+    return cov
+
+
+def matrix_score(m):
+    """
+    Objective function to penalize off-diagonal matrix mass.  Yields 
+    zero for a diagonal matrix.  Minimization of this function over 
+    row/column ordering minimizes matrix bandwidth (akin to banded 
+    """
+    score = 0
+    m_abs = np.abs(m)
+    norm = np.power(m.shape[0], 4) / 2
+    for i in np.arange(0, m.shape[0]):
+        for j in np.arange(0, m.shape[1]):
+            score += m_abs[i,j]*(i-j)*(i-j)
+            
+    return score / norm
