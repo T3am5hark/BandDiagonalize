@@ -22,7 +22,7 @@ def metropolis(e1, e2, t):
 
 
 def simulated_annealing(x0, energy_fun, perm_fun, 
-                        accept_reject_update_fun=None,
+                        update_fun=None,
                         steps=10000, t0=1.0, tau=100,
                         report_steps=100,
                         report=False):
@@ -42,8 +42,8 @@ def simulated_annealing(x0, energy_fun, perm_fun,
         else:
             e[t] = e1
         swaps.append(accept)
-        if accept_reject_update_fun is not None:
-            accept_reject_update_fun(accept)
+        if update_fun is not None:
+            update_fun(accept)
             
         if report and t % report_steps == 0:
             print('[{0}] Energy = {1}, T={2}'.format(t, e[t], temp))
@@ -112,15 +112,22 @@ class ReorderPermuter:
     def random_row_column_reorder(self, mat):
         i1, i2 = random_permute_two(mat)
         # swap indices
-        self._candidate_indices = (i1,i2)
+        self._candidate_indices = (i1, i2)
+        
+    def row_column_reorder(self, mat, i1, i2):
+        permute_two(mat, i1, i2)
+        self._candidate_indices = (i1, i2)
         
     def update_indices(self, accept):
+        r = (0,0)
         if accept:
             i1 = self._candidate_indices[0]
             i2 = self._candidate_indices[1]
             tmp = self.indices[i2]
             self.indices[i2] = self.indices[i1]
             self.indices[i1] = tmp
+            r = (i1,i2)
+        return r
         
     def get_permutation_matrix(self):
         
@@ -163,6 +170,28 @@ def rbf_cov(n, length_scale=None):
     return cov
 
 
+def penalty_weighting_matrix(n):
+    
+    mat = np.zeros(shape=(n,n))
+    
+    for i in np.arange(0,n):
+        for j in np.arange(0,n):
+            mat[i,j] = (i-j)*(i-j)
+            
+    return mat
+
+            
+def get_scoring_function(n):
+    
+    penalty_mat = penalty_weighting_matrix(n)
+    norm = np.power(n, 4) / 2
+    
+    # Pre-calculating penalty weights and multiplying thusly is
+    # like 50x faster than loop calculation below.  "If you're
+    # looping over elements of a matrix, you're doing it wrong."
+    return lambda mat: np.sum(np.abs(mat)*penalty_mat) / norm
+
+
 def matrix_score(m):
     """
     Objective function to penalize off-diagonal matrix mass.  Yields 
@@ -177,3 +206,33 @@ def matrix_score(m):
             score += m_abs[i,j]*(i-j)*(i-j)
             
     return score / norm
+
+
+def cleanup(x0, perm_fun=permute_two, energy_fun=None, update_fun=None):
+    """
+    A one-pass exhaustive pair-wise greedy swap can be more effective at finalizing the
+    matrix reorder than waiting many iterations for random swaps to find.
+    """
+    if energy_fun is None:
+        energy_fun = get_scoring_function(x0.shape[0])
+    x = x0.copy()
+    current_score = energy_fun(x)
+    e = list()
+    print('E={0}'.format(current_score))
+    for i in np.arange(1, x0.shape[0]):
+        for j in np.arange(i, x0.shape[0]):
+            candidate = x.copy()
+            perm_fun(candidate, i, j)
+            score = energy_fun(candidate)
+            swap = False
+            if score < current_score:
+                current_score = score
+                e.append(current_score)
+                x = candidate
+                swap = True
+                print('E={0}, swapped {1} and {2}'.format(current_score, i, j))
+                
+            if update_fun is not None:
+                r = update_fun(swap)
+
+    return x, e
